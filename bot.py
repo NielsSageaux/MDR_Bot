@@ -42,6 +42,7 @@ async def on_message(message):
         
         if destination_channel:
             content_limited = limiter_mots(message.content, 100)
+            
 
             if message.channel.id == CHANNEL_PRESENTATION_GUILDEUX_ID:
                 titre = ":rotating_light: Nouvelle Présentation de Guildeux !!! :rotating_light:"
