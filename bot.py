@@ -44,11 +44,11 @@ async def on_message(message):
             content_limited = limiter_mots(message.content, 100)
 
             if message.channel.id == CHANNEL_PRESENTATION_GUILDEUX_ID:
-                titre = ":rotating_light: Nouvelle Présentation de Haut Gradé !!! :rotating_light:"
-                color = discord.Color.red()
-            else:
                 titre = ":rotating_light: Nouvelle Présentation de Guildeux !!! :rotating_light:"
                 color = discord.Color.purple()
+            else:
+                titre = ":rotating_light: Nouvelle Présentation de Haut Gradé !!! :rotating_light:"
+                color = discord.Color.red()
             
             embed = discord.Embed(
                 title=titre,
