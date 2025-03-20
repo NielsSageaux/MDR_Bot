@@ -2,19 +2,23 @@ import discord # type: ignore
 from discord import app_commands # type: ignore
 from discord.ext import commands # type: ignore
 import os
+import sqlite3
 from dotenv import load_dotenv # type: ignore
 import datetime
 
 
 load_dotenv()
 
-CHANNEL_PRESENTATION_GUILDEUX_ID = int(os.getenv('CHANNEL_PRESENTATION_GUILDEUX'))
-CHANNEL_PRESENTATION_HG_ID = int(os.getenv('CHANNEL_PRESENTATION_HG'))
-CHANNEL_BISTROT_ID = int(os.getenv('CHANNEL_BISTROT'))
+CHANNEL_PRESENTATION_GUILDEUX_ID = 1351804801985548338
+CHANNEL_PRESENTATION_HG_ID = 1351602367522668607
+CHANNEL_BISTROT_ID = 1200334054701158400
 
 intents = discord.Intents.all()
 intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+DB_PATH = "discord_bot.db"
 
 @bot.event
 async def on_ready():
@@ -36,6 +40,25 @@ def limiter_mots(texte, limite=100):
 async def on_message(message):
     if message.author == bot.user:
         return
+    print("que")
+
+    
+        
+
+
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+    
+    ids_specifiques = [199975684607705088, 1352210032069972079]
+    
+    if message.author.id in ids_specifiques:
+        print(f"Message détecté de l'utilisateur: {message.author.id}")
+
+        if "quoi" in message.content.lower():
+            contenu = 'COUBEH' if message.author.id == 199975684607705088 else 'FEUR'
+            await message.reply(contenu, mention_author=False)
     
     if message.channel.id in [CHANNEL_PRESENTATION_GUILDEUX_ID, CHANNEL_PRESENTATION_HG_ID]:
         destination_channel = bot.get_channel(CHANNEL_BISTROT_ID)
