@@ -42,16 +42,12 @@ async def on_message(message):
         return
     print("que")
 
-    
-        
-
-
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
     
-    ids_specifiques = [199975684607705088, 1352210032069972079]
+    ids_specifiques = [326000214865346561, 199975684607705088]
     
     if message.author.id in ids_specifiques:
         print(f"Message détecté de l'utilisateur: {message.author.id}")
