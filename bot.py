@@ -254,26 +254,20 @@ async def update_members_data():
 @bot.event
 async def on_member_join(member):
     """Fonction déclenchée lorsqu'un nouveau membre rejoint le serveur"""
-    # Vérifier que c'est le bon serveur (optionnel, si vous gérez plusieurs serveurs)
     if member.guild.name != "Maison de retraite":
         return
 
-    # Log l'événement
     logger.info(f"Nouveau membre rejoint: {member.name}#{member.discriminator} (ID: {member.id})")
     
     try:
-        # Récupérer les données existantes pour vérifier si le membre est déjà dans la liste
         sheets_service = get_sheets_write_service()
         sheet_range = "MDR!A:Z"  # Adaptez selon votre structure de feuille
-        
         result = sheets_service.values().get(
             spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
             range=sheet_range
         ).execute()
-        
         values = result.get('values', [])
-        
-        # Vérifier si l'ID Discord existe déjà dans les données
+
         member_exists = False
         for row in values:
             if len(row) > 0 and str(member.id) in row:
@@ -282,7 +276,6 @@ async def on_member_join(member):
                 break
                 
         if not member_exists:
-            # Préparation des données du nouveau membre
             new_member_data = [
                 str(member.id),                                  # ID Discord
                 member.name,                                     # Nom Discord
@@ -290,13 +283,8 @@ async def on_member_join(member):
                 "Membre",                                        # Rôle (par défaut)
                 datetime.datetime.now().strftime("%d/%m/%Y")     # Date d'arrivée
             ]
-            
-            # Déterminer la prochaine ligne libre
             next_row = len(values) + 1
-            
-            # Ajouter à la feuille
             update_range = f"MDR!A{next_row}:E{next_row}"  # Adaptez les colonnes selon votre structure
-            
             sheets_service.values().update(
                 spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
                 range=update_range,
@@ -305,10 +293,9 @@ async def on_member_join(member):
                     "values": [new_member_data]
                 }
             ).execute()
-            
+        
             logger.info(f"Membre {member.name} ajouté à la base de données à la ligne {next_row}")
             
-            # Message de bienvenue dans un canal spécifique (optionnel)
             welcome_channel = member.guild.get_channel(CONFIG["CHANNELS"]["BISTROT"])
             if welcome_channel:
                 await welcome_channel.send(f"Bienvenue {member.mention} ! Ton ID a été ajouté à notre liste de membres.")
