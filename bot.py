@@ -4,15 +4,16 @@ from discord.ext import commands, tasks # type: ignore
 import os
 from dotenv import load_dotenv # type: ignore
 import datetime
+import requests # type: ignore
 import logging
-from googleapiclient.discovery import build
-from google.oauth2 import service_account
 
+# Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('guildeux_bot')
 
 load_dotenv()
 
+# Configuration centralisée
 CONFIG = {
     "CHANNELS": {
         "PRESENTATION_GUILDEUX": 1351804801985548338,
@@ -35,10 +36,7 @@ CONFIG = {
         }
     },
     "API": {
-        "PASSAGES_SHEET_ID": "151apOpgLtJyVPzg60Ecu8BZgV1UKE5bKtNdtTxkKhX0",
-        "MDR_SHEET_ID": "1qkWyIn_zfmPZgu1EE2S586hS_Zv4LeYS8x_9AeRDKeI",
-        "API_KEY": "AIzaSyC_ZCNt66olCsWbTU8fVLJh8TBIxemgCVU",
-        "CREDENTIALS_FILE": "credentials.json"
+        "SHEETDB_URL": "https://sheetdb.io/api/v1/fmngpa95dqtn9"
     },
     "COLORS": {
         "GUILDEUX": 0x9B59B6,  # violet
@@ -52,274 +50,53 @@ intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# Variable globale pour stocker les données
 passages_data = {}
-
-def get_sheets_service():
-    """Initialise et retourne un service Google Sheets avec une simple clé API"""
-    try:
-        service = build('sheets', 'v4', developerKey=CONFIG["API"]["API_KEY"])
-        return service.spreadsheets()
-    except Exception as e:
-        logger.error(f"Erreur lors de l'initialisation du service Google Sheets: {e}", exc_info=True)
-        return None
-    
-def get_sheets_read_service():
-    """Service pour les opérations de lecture avec clé API"""
-    try:
-        service = build('sheets', 'v4', developerKey=CONFIG["API"]["API_KEY"])
-        return service.spreadsheets()
-    except Exception as e:
-        logger.error(f"Erreur d'initialisation du service de lecture: {e}", exc_info=True)
-        return None
-
-def get_sheets_write_service():
-    """Service pour les opérations d'écriture avec compte de service"""
-    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-    try:
-        creds = service_account.Credentials.from_service_account_file(
-            CONFIG["API"]["CREDENTIALS_FILE"], scopes=SCOPES)
-        service = build('sheets', 'v4', credentials=creds)
-        return service.spreadsheets()
-    except Exception as e:
-        logger.error(f"Erreur d'initialisation du service d'écriture: {e}", exc_info=True)
-        return None
 
 async def load_data():
     global passages_data
-    try:
-        sheets = get_sheets_service()
-        if not sheets:
-            return False
-
-        result = sheets.values().get(
-            spreadsheetId=CONFIG["API"]["PASSAGES_SHEET_ID"],
-            range="A1:Z1000"  # Ajustez selon la taille de votre feuille
-        ).execute()
+    try: 
+        response = requests.get(CONFIG["API"]["SHEETDB_URL"])
         
-        values = result.get('values', [])
-        if not values:
-            logger.error("Aucune donnée trouvée dans la feuille Google")
-            return False
-            
-        headers = values[0]
-        data = []
-        
-        for row in values[1:]:
-            padded_row = row + [''] * (len(headers) - len(row))
-            row_dict = dict(zip(headers, padded_row))
-            data.append(row_dict)
-        
-        passages_data = {}
-        for row in data:
-            boss = row.get('boss', '')
-            if not boss:
-                continue
-            if boss not in passages_data:
-                passages_data[boss] = {"icone": row.get('icone', '')}
-            succes = row.get('succes', '')
-            if not succes:
-                continue
+        if response.status_code == 200:
+            data = response.json()
+            passages_data = {}
+            for row in data:
+                boss = row['boss']
+                if boss not in passages_data:
+                    passages_data[boss] = {"icone": row['icone']}
                 
-            passages_data[boss][succes] = {}
+                succes = row['succes']
+                passages_data[boss][succes] = {}
+                
+                # Collecte des passeurs non vides
+                passeurs = []
+                if row['passeur1']:
+                    passeurs.append(row['passeur1'])
+                if row['passeur2']:
+                    passeurs.append(row['passeur2'])
+                if row['passeur3']:
+                    passeurs.append(row['passeur3'])
+                
+                passages_data[boss][succes]["passeurs"] = passeurs
+                passages_data[boss][succes]["prix"] = [
+                    row['prix (kamas)'],
+                    row['prix réduc (kamas)'],
+                    row['prix (coins)']
+                ]
             
-            passeurs = []
-            if row.get('passeur1'):
-                passeurs.append(row.get('passeur1'))
-            if row.get('passeur2'):
-                passeurs.append(row.get('passeur2'))
-            if row.get('passeur3'):
-                passeurs.append(row.get('passeur3'))
-            
-            passages_data[boss][succes]["passeurs"] = passeurs
-            passages_data[boss][succes]["prix"] = [
-                row.get('prix (kamas)', ''),
-                row.get('prix réduc (kamas)', ''),
-                row.get('prix (coins)', '')
-            ]
-        
-        logger.info("Données chargées avec succès depuis Google Sheets")
-        return True
+            logger.info("Données chargées avec succès depuis SheetDB")
+            return True
+        else:
+            logger.error(f"Erreur lors de la requête SheetDB: {response.status_code}")
+            return False
     except Exception as e:
         logger.error(f"Erreur lors du chargement des données: {e}", exc_info=True)
         return False
 
-async def update_members_data():
-    """Met à jour les données des membres dans la feuille Google Sheets"""
-    try:
-        sheets = get_sheets_write_service()
-        if not sheets:
-            logger.error("Impossible d'initialiser le service d'écriture Google Sheets")
-            return False
-        
-        result = sheets.values().get(
-            spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
-            range="A1:Z1000"  # Ajustez selon la taille de votre feuille
-        ).execute()
-        
-        values = result.get('values', [])
-        if not values:
-            logger.error("Aucune donnée trouvée dans la feuille Google")
-            return False
-            
-        headers = values[0]
-        id_col = headers.index("ID Discord") if "ID Discord" in headers else None
-        pseudo_col = headers.index("Pseudo sur serveur Discord") if "Pseudo sur serveur Discord" in headers else None
-        role_col = headers.index("Rôle") if "Rôle" in headers else None
-        
-        if id_col is None or pseudo_col is None or role_col is None:
-            logger.error("Colonnes requises non trouvées dans la feuille")
-            return False
-        
-        members_data = []
-        for i in range(1, len(values)): 
-            if len(values[i]) > id_col:
-                row_dict = {}
-                for j, header in enumerate(headers):
-                    if j < len(values[i]):
-                        row_dict[header] = values[i][j]
-                    else:
-                        row_dict[header] = ""
-                members_data.append(row_dict)
-        
-        update_rows = []
-        
-        target_guild = None
-        for guild in bot.guilds:
-            if guild.name == "Maison de retraite":  # Nom du serveur
-                target_guild = guild
-                break
-                
-        if not target_guild:
-            logger.error("Guilde 'Maison de retraite' non trouvée")
-            return False
-        
-        for i, member_info in enumerate(members_data, start=1):
-            discord_id = member_info.get('ID Discord')
-            
-            if not discord_id or not discord_id.strip().isdigit():
-                continue
-                
-            discord_id = int(discord_id)
-            
-            guild_member = target_guild.get_member(discord_id)
-            if not guild_member:
-                continue
-            
-            current_nickname = guild_member.display_name
-            
-            top_role = None
-            for role in reversed(guild_member.roles):
-                if role.name != "@everyone":
-                    top_role = role.name
-                    break
-            
-            if not top_role:
-                top_role = "None"
-            
-            if current_nickname != member_info.get('Pseudo sur serveur Discord') or top_role != member_info.get('Rôle'):
-                row_index = i + 1 
-                
-                row_values = [None] * len(headers)
-                row_values[pseudo_col] = current_nickname
-                row_values[role_col] = top_role
-
-                update_rows.append({
-                    'range': f'Sheet1!{chr(65+pseudo_col)}{row_index}:{chr(65+role_col)}{row_index}',
-                    'values': [[current_nickname, top_role]]
-                })
-                
-                logger.info(f"Mise à jour détectée pour {current_nickname} (ID: {discord_id})")
-        
-        if update_rows:
-            body = {
-                'valueInputOption': 'RAW',
-                'data': update_rows
-            }
-            
-            result = sheets.values().batchUpdate(
-                spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
-                body=body
-            ).execute()
-            
-            logger.info(f"Mise à jour réussie pour {result.get('totalUpdatedCells')} cellules")
-            return True
-        else:
-            logger.info("Aucune mise à jour nécessaire pour les membres")
-            return True
-            
-    except Exception as e:
-        logger.error(f"Erreur lors de la mise à jour des données membres: {e}", exc_info=True)
-        return False
-
-@bot.event
-async def on_member_join(member):
-    """Fonction déclenchée lorsqu'un nouveau membre rejoint le serveur"""
-    # Vérifier que c'est le bon serveur (optionnel, si vous gérez plusieurs serveurs)
-    if member.guild.name != "Maison de retraite":
-        return
-
-    # Log l'événement
-    logger.info(f"Nouveau membre rejoint: {member.name}#{member.discriminator} (ID: {member.id})")
-    
-    try:
-        # Récupérer les données existantes pour vérifier si le membre est déjà dans la liste
-        sheets_service = get_sheets_write_service()
-        sheet_range = "MDR!A:Z"  # Adaptez selon votre structure de feuille
-        
-        result = sheets_service.values().get(
-            spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
-            range=sheet_range
-        ).execute()
-        
-        values = result.get('values', [])
-        
-        # Vérifier si l'ID Discord existe déjà dans les données
-        member_exists = False
-        for row in values:
-            if len(row) > 0 and str(member.id) in row:
-                member_exists = True
-                logger.info(f"Membre {member.name} déjà dans la base de données")
-                break
-                
-        if not member_exists:
-            # Préparation des données du nouveau membre
-            new_member_data = [
-                str(member.id),                                  # ID Discord
-                member.name,                                     # Nom Discord
-                member.display_name,                             # Pseudo sur serveur Discord
-                "Membre",                                        # Rôle (par défaut)
-                datetime.datetime.now().strftime("%d/%m/%Y")     # Date d'arrivée
-            ]
-            
-            # Déterminer la prochaine ligne libre
-            next_row = len(values) + 1
-            
-            # Ajouter à la feuille
-            update_range = f"MDR!A{next_row}:E{next_row}"  # Adaptez les colonnes selon votre structure
-            
-            sheets_service.values().update(
-                spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
-                range=update_range,
-                valueInputOption="RAW",
-                body={
-                    "values": [new_member_data]
-                }
-            ).execute()
-            
-            logger.info(f"Membre {member.name} ajouté à la base de données à la ligne {next_row}")
-            
-            # Message de bienvenue dans un canal spécifique (optionnel)
-            welcome_channel = member.guild.get_channel(CONFIG["CHANNELS"]["BISTROT"])
-            if welcome_channel:
-                await welcome_channel.send(f"Bienvenue {member.mention} ! Ton ID a été ajouté à notre liste de membres.")
-    
-    except Exception as e:
-        logger.error(f"Erreur lors de l'ajout du nouveau membre {member.name} (ID: {member.id}) : {e}", exc_info=True)
-
-@tasks.loop(hours=1)
+@tasks.loop(hours=24)
 async def refresh_data():
     await load_data()
-    await update_members_data()
 
 @refresh_data.before_loop
 async def before_refresh():
@@ -332,10 +109,6 @@ async def on_ready():
     success = await load_data()
     if success:
         refresh_data.start()
-
-    success_members = await update_members_data()
-    if success_members:
-        logger.info("Mise à jour des données membres réussie")
 
     try:
         synced = await bot.tree.sync()
@@ -678,6 +451,80 @@ class BossSuccessView(ui.View):
         
         # On ne peut pas mettre à jour le message ici car nous n'avons pas accès au message
         # Cette partie pourrait être améliorée en stockant une référence au message
+
+
+def limiter_mots(texte, limite=100):
+    """Limite un texte à un certain nombre de mots"""
+    mots = texte.split()
+    if len(mots) <= limite:
+        return texte
+    else:
+        return ' '.join(mots[:limite]) + '...'
+
+
+async def handle_presentation(message, channel_id):
+    """Fonction séparée pour gérer les présentations"""
+    destination_channel = bot.get_channel(CONFIG["CHANNELS"]["BISTROT"])
+    if not destination_channel:
+        logger.warning(f"Canal de destination {CONFIG['CHANNELS']['BISTROT']} non trouvé")
+        return
+    
+    content_limited = limiter_mots(message.content, 100)
+    
+    if channel_id == CONFIG["CHANNELS"]["PRESENTATION_GUILDEUX"]:
+        titre = ":rotating_light: Nouvelle Présentation de Guildeux !!! :rotating_light:"
+        color = CONFIG["COLORS"]["GUILDEUX"]
+    else:
+        titre = ":rotating_light: Nouvelle Présentation de Haut Gradé !!! :rotating_light:" 
+        color = CONFIG["COLORS"]["HG"]
+    
+    embed = discord.Embed(
+        title=titre,
+        description=content_limited,
+        color=color,
+        timestamp=datetime.datetime.now()
+    )
+    
+    embed.set_author(
+        name=message.author.display_name,
+        icon_url=message.author.display_avatar.url
+    )
+    
+    embed.add_field(
+        name="Accéder à la présentation complète : ",
+        value=f"[#{message.channel.name}]({message.jump_url})",
+        inline=False
+    )
+    
+    # Traitement des images
+    if message.attachments:
+        for attachment in message.attachments:
+            if attachment.content_type and attachment.content_type.startswith('image'):
+                embed.set_image(url=attachment.url)
+                break
+    
+    await destination_channel.send(embed=embed)
+    logger.info(f"Embed créé pour la présentation de {message.author.display_name}")
+
+
+@bot.event
+async def on_message(message):
+    # Ignorer les messages du bot
+    if message.author == bot.user:
+        return
+    
+    # Gestion des réponses "quoi"
+    if message.author.id in CONFIG["MESSAGES"]["QUOI_RESPONSES"] and "quoi" in message.content.lower():
+        await message.reply(CONFIG["MESSAGES"]["QUOI_RESPONSES"][message.author.id], mention_author=False)
+    
+    # Gestion des présentations
+    channel_id = message.channel.id
+    if channel_id in [CONFIG["CHANNELS"]["PRESENTATION_GUILDEUX"], CONFIG["CHANNELS"]["PRESENTATION_HG"]]:
+        await handle_presentation(message, channel_id)
+    
+    # Traite les commandes
+    await bot.process_commands(message)
+
 
 # Démarrer le bot
 if __name__ == "__main__":
