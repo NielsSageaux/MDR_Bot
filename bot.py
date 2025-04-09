@@ -2,11 +2,32 @@ import discord # type: ignore
 from discord import app_commands, SelectOption, Embed, ui # type: ignore
 from discord.ext import commands, tasks # type: ignore
 import os
+import json
 from dotenv import load_dotenv # type: ignore
 import datetime
 import logging
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
+from google.oauth2.service_account import Credentials
+
+def get_credentials():
+    # Vérifier si un fichier credentials.json existe
+    if os.path.exists('credentials.json'):
+        return service_account.Credentials.from_service_account_file(
+            'credentials.json', 
+            scopes=['https://www.googleapis.com/auth/spreadsheets']
+        )
+    
+    # Sinon, utiliser les variables d'environnement
+    elif os.environ.get('GOOGLE_CREDENTIALS'):
+        # Récupérer le contenu des credentials depuis la variable d'environnement
+        credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS'])
+        return service_account.Credentials.from_service_account_info(
+            credentials_info,
+            scopes=['https://www.googleapis.com/auth/spreadsheets']
+        )
+    else:
+        raise Exception("Aucune méthode d'authentification disponible")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('guildeux_bot')
@@ -15,9 +36,7 @@ load_dotenv()
 
 CONFIG = {
     "CHANNELS": {
-        "PRESENTATION_GUILDEUX": 1351804801985548338,
-        "PRESENTATION_HG": 1351602367522668607,
-        "BISTROT": 1200334054701158400,
+        "BIENVENUE": 1200333038664568893,
         "FORUM_PASSAGES": 1353744187752976486
     },
     "PLAYERS": {
@@ -27,12 +46,6 @@ CONFIG = {
         "Krakoukas": 267423385967919104,
         "Meilleur": 291706707602833408,
         "Guiffee": 279349998901133314
-    },
-    "MESSAGES": {
-        "QUOI_RESPONSES": {
-            199975684607705088: "COUBEH",
-            326000214865346561: "FEUR"
-        }
     },
     "API": {
         "PASSAGES_SHEET_ID": "151apOpgLtJyVPzg60Ecu8BZgV1UKE5bKtNdtTxkKhX0",
@@ -143,112 +156,41 @@ async def load_data():
         logger.error(f"Erreur lors du chargement des données: {e}", exc_info=True)
         return False
 
-async def update_members_data():
+async def update_members_data() -> bool:
     """Met à jour les données des membres dans la feuille Google Sheets"""
     try:
         sheets = get_sheets_write_service()
         if not sheets:
             logger.error("Impossible d'initialiser le service d'écriture Google Sheets")
             return False
-        
-        result = sheets.values().get(
-            spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
-            range="A1:Z1000"  # Ajustez selon la taille de votre feuille
+
+        spreadsheet_id = CONFIG["API"].get("MDR_SHEET_ID")
+        if not spreadsheet_id:
+            logger.error("L'ID de la feuille Google Sheets est manquant dans la configuration")
+            return False
+
+        range_to_fetch = CONFIG["API"].get("SHEET_RANGE", "A1:Z1000")  # Default range
+        logger.info(f"Fetching data from spreadsheet ID: {spreadsheet_id}, range: {range_to_fetch}")
+
+        result = await sheets.values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_to_fetch
         ).execute()
-        
-        values = result.get('values', [])
-        if not values:
+
+        sheet_data = result.get('values', [])
+        if not sheet_data:
             logger.error("Aucune donnée trouvée dans la feuille Google")
             return False
-            
-        headers = values[0]
-        id_col = headers.index("ID Discord") if "ID Discord" in headers else None
-        pseudo_col = headers.index("Pseudo sur serveur Discord") if "Pseudo sur serveur Discord" in headers else None
-        role_col = headers.index("Rôle") if "Rôle" in headers else None
-        
-        if id_col is None or pseudo_col is None or role_col is None:
-            logger.error("Colonnes requises non trouvées dans la feuille")
-            return False
-        
-        members_data = []
-        for i in range(1, len(values)): 
-            if len(values[i]) > id_col:
-                row_dict = {}
-                for j, header in enumerate(headers):
-                    if j < len(values[i]):
-                        row_dict[header] = values[i][j]
-                    else:
-                        row_dict[header] = ""
-                members_data.append(row_dict)
-        
-        update_rows = []
-        
-        target_guild = None
-        for guild in bot.guilds:
-            if guild.name == "Maison de retraite":  # Nom du serveur
-                target_guild = guild
-                break
-                
-        if not target_guild:
-            logger.error("Guilde 'Maison de retraite' non trouvée")
-            return False
-        
-        for i, member_info in enumerate(members_data, start=1):
-            discord_id = member_info.get('ID Discord')
-            
-            if not discord_id or not discord_id.strip().isdigit():
-                continue
-                
-            discord_id = int(discord_id)
-            
-            guild_member = target_guild.get_member(discord_id)
-            if not guild_member:
-                continue
-            
-            current_nickname = guild_member.display_name
-            
-            top_role = None
-            for role in reversed(guild_member.roles):
-                if role.name != "@everyone":
-                    top_role = role.name
-                    break
-            
-            if not top_role:
-                top_role = "None"
-            
-            if current_nickname != member_info.get('Pseudo sur serveur Discord') or top_role != member_info.get('Rôle'):
-                row_index = i + 1 
-                
-                row_values = [None] * len(headers)
-                row_values[pseudo_col] = current_nickname
-                row_values[role_col] = top_role
 
-                update_rows.append({
-                    'range': f'Sheet1!{chr(65+pseudo_col)}{row_index}:{chr(65+role_col)}{row_index}',
-                    'values': [[current_nickname, top_role]]
-                })
-                
-                logger.info(f"Mise à jour détectée pour {current_nickname} (ID: {discord_id})")
-        
-        if update_rows:
-            body = {
-                'valueInputOption': 'RAW',
-                'data': update_rows
-            }
-            
-            result = sheets.values().batchUpdate(
-                spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
-                body=body
-            ).execute()
-            
-            logger.info(f"Mise à jour réussie pour {result.get('totalUpdatedCells')} cellules")
-            return True
-        else:
-            logger.info("Aucune mise à jour nécessaire pour les membres")
-            return True
-            
+        headers = sheet_data[0]
+        logger.info(f"Headers trouvés: {headers}")
+        return True
+
+    except HttpError as http_err:
+        logger.error(f"Erreur HTTP lors de l'accès à Google Sheets: {http_err}", exc_info=True)
+        return False
     except Exception as e:
-        logger.error(f"Erreur lors de la mise à jour des données membres: {e}", exc_info=True)
+        logger.error(f"Erreur inattendue: {e}", exc_info=True)
         return False
 
 @bot.event
@@ -261,7 +203,7 @@ async def on_member_join(member):
     
     try:
         sheets_service = get_sheets_write_service()
-        sheet_range = "MDR!A:Z"  # Adaptez selon votre structure de feuille
+        sheet_range = "Sheet1!A:Z"  # Adaptez selon votre structure de feuille
         result = sheets_service.values().get(
             spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
             range=sheet_range
@@ -277,14 +219,13 @@ async def on_member_join(member):
                 
         if not member_exists:
             new_member_data = [
-                str(member.id),                                  # ID Discord
-                member.name,                                     # Nom Discord
+                str(member.id),                                  # ID Discord                   
                 member.display_name,                             # Pseudo sur serveur Discord
                 "Membre",                                        # Rôle (par défaut)
-                datetime.datetime.now().strftime("%d/%m/%Y")     # Date d'arrivée
+                0                                                # Nombre de Ch'ton
             ]
             next_row = len(values) + 1
-            update_range = f"MDR!A{next_row}:E{next_row}"  # Adaptez les colonnes selon votre structure
+            update_range = f"Sheet1!A{next_row}:D{next_row}"  # Adaptez les colonnes selon votre structure
             sheets_service.values().update(
                 spreadsheetId=CONFIG["API"]["MDR_SHEET_ID"],
                 range=update_range,
@@ -296,9 +237,9 @@ async def on_member_join(member):
         
             logger.info(f"Membre {member.name} ajouté à la base de données à la ligne {next_row}")
             
-            welcome_channel = member.guild.get_channel(CONFIG["CHANNELS"]["BISTROT"])
+            welcome_channel = member.guild.get_channel(CONFIG["CHANNELS"]["BIENVENUE"])
             if welcome_channel:
-                await welcome_channel.send(f"Bienvenue {member.mention} ! Ton ID a été ajouté à notre liste de membres.")
+                await welcome_channel.send(f"Hello {member.mention} ! Bienvenur à **{member.guild.name}** !")
     
     except Exception as e:
         logger.error(f"Erreur lors de l'ajout du nouveau membre {member.name} (ID: {member.id}) : {e}", exc_info=True)
