@@ -1,4 +1,34 @@
+# Environnement
 .env
-myenv/
+venv/
+env/
+.venv/
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Fichiers de configuration (sauf les exemples)
+config.json
 credentials.json
-*.json
+*.pem
+*.key
+
+# Caches Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Système
+.DS_Store
+Thumbs.db
