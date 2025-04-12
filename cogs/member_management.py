@@ -41,7 +41,8 @@ class MemberManagement(commands.Cog):
                 member_data = [
                     str(member.id),
                     member.display_name,
-                    "Membre"  # Rôle par défaut
+                    "Membre",             # Rôle par défaut
+                    0                     # Nombre de chtons par défaut
                 ]
                 
                 # Ajouter le nouveau membre à la base de données
@@ -69,11 +70,8 @@ class MemberManagement(commands.Cog):
         logger.info(f"Membre quitté: {member.name} (ID: {member.id})")
 
         try:
-            # Récupérer l'instance de DataManager
             data_manager = await DataManager.get_instance()
-            
-            # Supprimer le membre de la base de données
-            success = await DataManager.delete_member(member.id)
+            success = await data_manager.delete_member(member.id)
             
             if success:
                 logger.info(f"Membre {member.name} supprimé de la base de données")

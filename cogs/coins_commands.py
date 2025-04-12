@@ -21,7 +21,7 @@ class CoinsCommands(commands.Cog):
         chtons = member_data[3] if member_data else 0
         # Créer la réponse
         await interaction.response.send_message(
-            f"Tu as **{chtons} Ch'tons** !",
+            f"Tu as **{chtons} Ch'tons** {CONFIG['EMOTES']['CHTON']} !",
             ephemeral=True
         )
 
@@ -33,10 +33,10 @@ class CoinsCommands(commands.Cog):
 
         # Vérifier que le montant est positif
         if amount <= 0:
-            await interaction.followup.send("Le montant doit être supérieur à 0.")
+            await interaction.followup.send(f"Ton montant de Ch'Tons {CONFIG['EMOTES']['CHTON']} doit être supérieur à 0.")
             return
         if user.id == interaction.user.id:
-            await interaction.followup.send("Petit malin va, tu ne peux pas te donner des Ch'tons à toi-même !")
+            await interaction.followup.send(f"Petit malin va, tu ne peux pas te donner des Ch'tons {CONFIG['EMOTES']['CHTON']} à toi-même !")
             return
         
         # Récupérer le nombre de Ch'tons de l'utilisateur
@@ -45,7 +45,7 @@ class CoinsCommands(commands.Cog):
         giver_data = await data_manager.get_member_data(interaction.user.id)
 
         if int(giver_data[3]) < amount:
-            await interaction.followup.send("Tu n'as pas assez de Ch'tons.")
+            await interaction.followup.send(f"Tu n'as pas assez de Ch'tons {CONFIG['EMOTES']['CHTON']}")
             return
         
         receiver_data[3] = int(receiver_data[3]) + amount
@@ -55,8 +55,8 @@ class CoinsCommands(commands.Cog):
         await data_manager.save_member_data(interaction.user.id, giver_data)
 
         # Utiliser followup au lieu de response.send_message
-        await interaction.followup.send(f"Tu as donné **{amount} Ch'tons** à {user.mention} !")
-        await user.send(f"Tu as reçu **{amount} Ch'tons** de la part de {giver_data[1]} !")
+        await interaction.followup.send(f"Tu as donné **{amount} Ch'tons** {CONFIG['EMOTES']['CHTON']} à {user.mention} !")
+        await user.send(f"Tu as reçu **{amount} Ch'tons** {CONFIG['EMOTES']['CHTON']} de la part de {giver_data[1]} !")
         
 async def setup(bot):
     await bot.add_cog(CoinsCommands(bot))

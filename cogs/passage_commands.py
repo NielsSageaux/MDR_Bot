@@ -8,7 +8,7 @@ from services.data_manager import DataManager
 
 logger = setup_logger('passage_commands')
 
-def create_success_embed(boss_name, success_name):
+def create_success_embed(boss_name, success_name, client_id):
     passages_data = DataManager.get_passages_data()
     if passages_data[boss_name]['ICONE'] != 'placeholder':
         boss_name = passages_data[boss_name]['ICONE'] + " " + boss_name
@@ -24,6 +24,7 @@ def create_success_embed(boss_name, success_name):
     price_text = f"💰 **{success_data['prix (kamas)']} kamas**"
     if success_data['prix (coins)']:  # Si prix en ch'tons existe
         price_text += f" ou **{success_data['prix (coins)']} ch'tons**"
+    
     
     embed.add_field(name="Prix du passage", value=price_text, inline=False)
     
@@ -160,7 +161,7 @@ class SuccessSelect(ui.Select):
             success_list = list(boss_data_success.keys())
             
             selected_success = success_list[selected_index]
-            embed = create_success_embed(self.boss_name, selected_success) 
+            embed = create_success_embed(self.boss_name, selected_success, interaction.client.user.id) 
             
             await interaction.response.edit_message(embed=embed, view=self.view)
 
@@ -205,7 +206,6 @@ class PassageCommands(commands.Cog):
             choices.append(app_commands.Choice(name=boss, value=boss))
         
         return choices
-
     
     @app_commands.command(name="passage", description="Affiche les informations sur un passage de boss")
     @app_commands.describe(boss="Nom du boss")
@@ -228,7 +228,7 @@ class PassageCommands(commands.Cog):
             first_success = next(iter(passages_data[boss]['SUCCESS'].keys()))
             
             # Créer l'embed et la vue
-            embed = create_success_embed(boss, first_success)
+            embed = create_success_embed(boss, first_success, interaction.client.user.id)
             view = discord.ui.View()
             view.add_item(SuccessSelect(boss))
             view.add_item(CreateThreadButton(boss, first_success))

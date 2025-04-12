@@ -271,17 +271,27 @@ class GoogleSheetsService:
             row_index = await GoogleSheetsService.find_row_index(
                 spreadsheet_id, sheet_name, id_column, id_value
             )
+            logger.info(f"Row index: {row_index}")
             
             if row_index == -1:
                 logger.error(f"Ligne avec ID {id_value} non trouvée")
                 return False
             
-            # Récupérer les données existantes pour connaître le nombre de colonnes
-            existing_data = await GoogleSheetsService.read_row_by_id(
-                spreadsheet_id, sheet_name, id_column, id_value
-            )
+            sheets = GoogleSheetsService.get_service()
+            if not sheets:
+                logger.error("Impossible d'initialiser le service")
+                return False
             
-            if not existing_data:
+            spreadsheet = sheets.get(spreadsheetId=spreadsheet_id).execute()
+            sheet_id = None
+
+            for sheet in spreadsheet['sheets']:
+                if sheet['properties']['title'] == sheet_name:
+                    sheet_id = sheet['properties']['sheetId']
+                    break
+            
+            if sheet_id is None:
+                logger.error(f"Feuille {sheet_name} non trouvée dans le document")
                 return False
 
             body = {
@@ -289,7 +299,7 @@ class GoogleSheetsService:
                     {    
                         "deleteDimension": {
                             "range": {
-                                "sheetId": sheet_name,
+                                "sheetId": sheet_id,
                                 "dimension": "ROWS",
                                 "startIndex": row_index,
                                 "endIndex": row_index + 1
@@ -299,11 +309,12 @@ class GoogleSheetsService:
                 ]
             }
 
-            sheets = GoogleSheetsService.get_service()
-            return await sheets.batchUpdate(
+            sheets.batchUpdate(
                 spreadsheetId=spreadsheet_id,
                 body=body
             ).execute()
+
+            return True
 
         except Exception as e:
             logger.error(f"Erreur lors de la suppression de ligne: {e}", exc_info=True)

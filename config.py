@@ -26,5 +26,8 @@ CONFIG = {
         "HG": 0xE74C3C,  # rouge
         "SUCCESS": 0x00FF00    # vert
     },
-    "GUILD_NAME": "Maison de retraite"
+    "GUILD_NAME": "Maison de retraite",
+    "EMOTES": {
+        "CHTON": "<:ChTon:1360238141805433034>"
+    }
 }

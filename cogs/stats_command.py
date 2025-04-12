@@ -35,7 +35,7 @@ class StatsCog(commands.Cog):
         # Informations générales
         embed.add_field(name="Nom du Bot", value=self.bot.user.name, inline=True)
         embed.add_field(name="ID du Bot", value=self.bot.user.id, inline=True)
-        embed.add_field(name="Créé par", value="Les Guildeux", inline=True)
+        embed.add_field(name="Créé par", value="Jean-Lard", inline=True)
         
         # Informations techniques
         embed.add_field(name="Version Discord.py", value=discord.__version__, inline=True)
