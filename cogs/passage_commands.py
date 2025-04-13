@@ -10,8 +10,8 @@ logger = setup_logger('passage_commands')
 
 async def create_success_embed(boss_name, success_name, client_id):
     passages_data = DataManager.get_passages_data()
-    if passages_data[boss_name]['ICONE'] != 'placeholder':
-        boss_name = passages_data[boss_name]['ICONE'] + " " + boss_name
+    #if passages_data[boss_name]['ICONE'] != 'placeholder':
+    #    boss_name = passages_data[boss_name]['ICONE'] + " " + boss_name
     
     success_data = passages_data[boss_name]['SUCCESS'][success_name]
     
