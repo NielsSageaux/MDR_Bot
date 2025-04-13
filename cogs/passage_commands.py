@@ -8,7 +8,7 @@ from services.data_manager import DataManager
 
 logger = setup_logger('passage_commands')
 
-def create_success_embed(boss_name, success_name, client_id):
+async def create_success_embed(boss_name, success_name, client_id):
     passages_data = DataManager.get_passages_data()
     if passages_data[boss_name]['ICONE'] != 'placeholder':
         boss_name = passages_data[boss_name]['ICONE'] + " " + boss_name
@@ -16,24 +16,33 @@ def create_success_embed(boss_name, success_name, client_id):
     success_data = passages_data[boss_name]['SUCCESS'][success_name]
     
     embed = discord.Embed(
-        title=f"{boss_name} - {success_name}",
-        description="Aucune description disponible",
+        title=f"**__{boss_name} - {success_name}__**",
         color=CONFIG["COLORS"]["SUCCESS"]
     )
+    
+    dataManager = await DataManager.get_instance()
+    client_data = await dataManager.get_member_data(client_id)
+    reduc = 1
+    if client_data[2] == "Nouveau (PDE)":
+        reduc = CONFIG["REDUCS"]["NOUVEAU"]
+    elif client_data[2] == "Membre de guilde":
+        reduc = CONFIG["REDUCS"]["NORMAL"]
+    elif client_data[2] == "Resident premium" or client_data[2] == "Hauts gradés" or client_data[2] == "Directeur" or client_data[2] == "vieux des vieux":
+        reduc = CONFIG["REDUCS"]["PREMIUM"] 
 
-    price_text = f"💰 **{success_data['prix (kamas)']} kamas**"
-    if success_data['prix (coins)']:  # Si prix en ch'tons existe
-        price_text += f" ou **{success_data['prix (coins)']} ch'tons**"
-    
-    
-    embed.add_field(name="Prix du passage", value=price_text, inline=False)
-    
-    #if success_data['passeurs']:
-    #    passeurs_list = success_data['passeurs'].split(", ")
-    #    passeurs_text = ", ".join([f"<@{CONFIG['PLAYERS'][p]}>" for p in passeurs_list if p in CONFIG['PLAYERS']])
-    #    embed.add_field(name="Passeurs", value=passeurs_text or "Aucun passeur spécifié", inline=False)
+    if success_data['prix (kamas)'] == 'flemme':
+        embed.add_field(name="Désolé !", value="Ce succès n'est pas effectué par nos passeurs.", inline=False)
+    else:
+        if 'm' in success_data['prix (kamas)']:
+            kamas = float(success_data['prix (kamas)'].replace('m', '.')) * reduc * 100000
+        elif 'k' in success_data['prix (kamas)']:
+            kamas = float(success_data['prix (kamas)'].replace('k', '.')) * reduc * 1000
+        kamas = f"{int(kamas):,}".replace(",", " ")
+        embed.add_field(name="**Prix du passage :**", value=f"**{int(int(success_data['prix (coins)']) * reduc)} Ch'tons {CONFIG['EMOTES']['CHTON']}**", inline=True)
+        embed.add_field(name="**Prix alternatif :**", value=f"**{kamas} Kamas {CONFIG['EMOTES']['KAMAS']}**", inline=True)
 
-    embed.set_footer(text="Utilisez le menu déroulant pour voir les autres succès du boss ou le bouton pour créer une demande de passage sur ce succès.")
+    embed.set_footer(text=
+                     "Utilisez le menu déroulant pour voir les autres succès du boss ou le bouton pour créer une demande de passage sur ce succès. Reformulez une commande /passage pour voir les succès proposés pour d'autres boss.")
 
     view = discord.ui.View()
     view.add_item(SuccessSelect(boss_name))
@@ -161,7 +170,7 @@ class SuccessSelect(ui.Select):
             success_list = list(boss_data_success.keys())
             
             selected_success = success_list[selected_index]
-            embed = create_success_embed(self.boss_name, selected_success, interaction.client.user.id) 
+            embed = await create_success_embed(self.boss_name, selected_success, interaction.user.id) 
             
             await interaction.response.edit_message(embed=embed, view=self.view)
 
@@ -176,6 +185,7 @@ class PassageCommands(commands.Cog):
         self.bot = bot
         self.data_ready = asyncio.Event()
         self.boss_list = []
+        self.passages_data = {}
         self.bot.loop.create_task(self.wait_for_data())
     
     async def wait_for_data(self):
@@ -189,6 +199,7 @@ class PassageCommands(commands.Cog):
                 if data:
                     self.data_ready.set()
                     self.boss_list = DataManager.get_boss_list()
+                    self.passages_data = DataManager.get_passages_data()
                     logger.info(f"Données de passage prêtes: {len(data)} boss trouvés")
                     break
             except:
@@ -228,7 +239,7 @@ class PassageCommands(commands.Cog):
             first_success = next(iter(passages_data[boss]['SUCCESS'].keys()))
             
             # Créer l'embed et la vue
-            embed = create_success_embed(boss, first_success, interaction.client.user.id)
+            embed = await create_success_embed(boss, first_success, interaction.user.id)
             view = discord.ui.View()
             view.add_item(SuccessSelect(boss))
             view.add_item(CreateThreadButton(boss, first_success))
@@ -238,10 +249,6 @@ class PassageCommands(commands.Cog):
         except Exception as e:
             logger.error(f"Erreur lors de l'exécution de la commande passage: {e}", exc_info=True)
             await interaction.followup.send("Une erreur s'est produite lors de l'exécution de la commande.", ephemeral=True)
-
-    @app_commands.command(name="test", description="Test de commande")
-    async def test_command(self, interaction: discord.Interaction):
-        await interaction.response.send_message("Test réussi", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(PassageCommands(bot))

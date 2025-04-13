@@ -28,6 +28,12 @@ CONFIG = {
     },
     "GUILD_NAME": "Maison de retraite",
     "EMOTES": {
-        "CHTON": "<:ChTon:1360238141805433034>"
+        "CHTON": "<:ChTon:1360238141805433034>",
+        "KAMAS": "<:kamas:811134750415912980>"
+    },
+    "REDUCS": {
+        "PREMIUM": 0.8,
+        "NORMAL": 0.9,
+        "NOUVEAU": 1
     }
 }
