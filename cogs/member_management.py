@@ -52,7 +52,7 @@ class MemberManagement(commands.Cog):
                 )
                 
                 if success:
-                    logger.info(f"Nouveau membre ajouté à la base de données: {member.name}")
+                    logger.info(f"Nouveau membre ajouté à la base de données: {member.name} (ID: {member.id})")
                     # Envoyer un message de bienvenue
                     welcome_channel = member.guild.get_channel(CONFIG["CHANNELS"]["BIENVENUE"])
                     if welcome_channel:
