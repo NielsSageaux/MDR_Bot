@@ -71,7 +71,7 @@ class CoinsCommands(commands.Cog):
         # Différez immédiatement la réponse pour éviter l'expiration
         await interaction.response.defer(ephemeral=True)
 
-        if user.guild_permissions.administrator:
+        if interaction.user.guild_permissions.administrator:
             # Vérifier que le montant est positif
             if amount <= 0:
                 await interaction.followup.send(f"Le montant de Ch'Tons {CONFIG['EMOTES']['CHTON']} à retirer doit être supérieur à 0.")
