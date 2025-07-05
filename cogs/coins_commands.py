@@ -28,8 +28,8 @@ class CoinsCommands(commands.Cog):
         logger.info(f"{interaction.user.display_name} a demandé ses Ch'tons. Nombre de Ch'tons : {chtons}")
 
     @app_commands.command(name="give", description="Transfère des Ch'tons de toi à un autre utilisateur")
-    @app_commands.describe(user="L'utilisateur à qui donner des Ch'tons", amount="Le nombre de Ch'tons à donner")
-    async def give_coins(self, interaction: discord.Interaction, user: discord.Member, amount: int):
+    @app_commands.describe(user="L'utilisateur à qui donner des Ch'tons", amount="Le nombre de Ch'tons à donner", raison="Raison de la transaction")
+    async def give_coins(self, interaction: discord.Interaction, user: discord.Member, amount: int, raison: str):
         # Différez immédiatement la réponse pour éviter l'expiration
         await interaction.response.defer(ephemeral=True)
 
@@ -61,8 +61,40 @@ class CoinsCommands(commands.Cog):
 
         # Utiliser followup au lieu de response.send_message
         await interaction.followup.send(f"Tu as donné **{amount} Ch'tons** {CONFIG['EMOTES']['CHTON']} à {user.mention} !")
-        await user.send(f"Tu as reçu **{amount} Ch'tons** {CONFIG['EMOTES']['CHTON']} de la part de {giver_data[1]} !")
-        logger.info(f"{interaction.user.display_name} a donné {amount} Ch'tons à {user.display_name}.")
+        await user.send(f"Tu as reçu **{amount} Ch'tons** {CONFIG['EMOTES']['CHTON']} de la part de {giver_data[1]} pour telle raison: {raison}")
+        await self.bot.get_channel(CONFIG["CHANNELS"]["TRANSCRIPT"]).send(f"DON: <@{interaction.user.id}> a donné {amount} Ch'tons à <@{user.id}> pour la raison suivante: {raison}")
+        logger.info(f"{interaction.user.display_name} a donné {amount} de ses Ch'tons {CONFIG['EMOTES']['CHTON']} à {user.display_name}.")
+
+    @app_commands.command(name="remove", description="Retirer des Ch'tons à un utilisateur")
+    @app_commands.describe(user="L'utilisateur à qui retirer des Ch'tons", amount="Le nombre de Ch'tons à retirer", raison="Raison du prélévement (optionnel)")
+    async def remove_coins(self, interaction: discord.Interaction, user: discord.Member, amount: int, raison: str = "Aucune raison fournie"):
+        # Différez immédiatement la réponse pour éviter l'expiration
+        await interaction.response.defer(ephemeral=True)
+
+        if user.guild_permissions.administrator:
+            # Vérifier que le montant est positif
+            if amount <= 0:
+                await interaction.followup.send(f"Le montant de Ch'Tons {CONFIG['EMOTES']['CHTON']} à retirer doit être supérieur à 0.")
+                logger.warning(f"{interaction.user.display_name} a essayé de retirer un montant négatif ou nul de Ch'tons.")
+                return
+            
+            # Récupérer le nombre de Ch'tons de l'utilisateur
+            data_manager = await DataManager.get_instance()
+            receiver_data = await data_manager.get_member_data(user.id)
+            
+            receiver_data[3] = int(receiver_data[3]) - amount
+
+            await data_manager.save_member_data(user.id, receiver_data)
+
+            # Utiliser followup au lieu de response.send_message
+            await interaction.followup.send(f"Tu as retiré **{amount} Ch'tons** {CONFIG['EMOTES']['CHTON']} à {user.mention} !")
+            await user.send(f"Tu as perdu **{amount} Ch'tons** {CONFIG['EMOTES']['CHTON']}  pour telle raison: {raison}")
+            await self.bot.get_channel(CONFIG["CHANNELS"]["TRANSCRIPT"]).send(f"RETRAIT: <@{interaction.user.id}> a retiré {amount} Ch'tons à <@{user.id}> pour la raison suivante: {raison}")
+            logger.info(f"{interaction.user.display_name} a retiré {amount} Ch'tons à {user.display_name}.")
+
+        else:
+            await interaction.followup.send("Tu n'as pas la permission de retirer des Ch'tons à un utilisateur.")
+            logger.warning(f"{interaction.user.display_name} a essayé de retirer des Ch'tons sans permission.")
         
 async def setup(bot):
     await bot.add_cog(CoinsCommands(bot))

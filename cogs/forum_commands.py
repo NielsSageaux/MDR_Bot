@@ -27,12 +27,10 @@ class ForumCommands(commands.Cog):
         
         # Vérifier si l'utilisateur est le créateur du thread, un modérateur ou un admin
         is_creator = thread.owner_id == member.id if thread.owner_id else False
-        is_passeur = member.id in CONFIG["PLAYERS"].values()
         
         has_permissions = (
             member.guild_permissions.manage_threads or 
-            member.guild_permissions.administrator or
-            is_passeur
+            member.guild_permissions.administrator
         )
         
         if not (is_creator or has_permissions):
@@ -43,6 +41,23 @@ class ForumCommands(commands.Cog):
             return
         
         try:
+            messages = []
+            async for message in thread.history(limit=None):
+                if message.content.strip():
+                    messages.append(f"{message.author.display_name}: {message.content}")
+            
+            messages.reverse()
+
+            filename = f"conversation_{thread.id}.txt"
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(f"Thread: {thread.name}\n")
+                f.write("\n".join(messages))
+
+            await self.bot.get_channel(CONFIG["CHANNELS"]["TRANSCRIPT"]).send(
+                f"📁 Thread fermé: **{thread.name}**",
+                file=discord.File(filename)
+            )
+
             # Envoyer un message de confirmation
             await interaction.response.send_message(
                 "🔒 Ce thread va être archivé dans quelques secondes...",

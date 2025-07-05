@@ -23,18 +23,20 @@ async def create_success_embed(boss_name, success_name, client_id):
     dataManager = await DataManager.get_instance()
     client_data = await dataManager.get_member_data(client_id)
     reduc = 1
-    if client_data[2] == "Nouveau (PDE)":
+    if client_data[2] == "Jeune Retraité":
         reduc = CONFIG["REDUCS"]["NOUVEAU"]
-    elif client_data[2] == "Membre de guilde":
+    elif client_data[2] == "Retraité":
         reduc = CONFIG["REDUCS"]["NORMAL"]
-    elif client_data[2] == "Resident premium" or client_data[2] == "Hauts gradés" or client_data[2] == "Directeur" or client_data[2] == "vieux des vieux":
+    elif client_data[2] == "Retraité Premium" or client_data[2] == "Aides Soignants" or client_data[2] == "Médecin de Garde" or client_data[2] == "vieux des vieux":
         reduc = CONFIG["REDUCS"]["PREMIUM"] 
 
     if success_data['prix (kamas)'] == 'flemme':
         embed.add_field(name="Désolé !", value="Ce succès n'est pas effectué par nos passeurs.", inline=False)
+    elif success_data['prix (kamas)'] == 'free':
+        embed.add_field(name="**Prix du passage :**", value="**Gratuit !**", inline=True)
     else:
         if 'm' in success_data['prix (kamas)']:
-            kamas = float(success_data['prix (kamas)'].replace('m', '.')) * reduc * 100000
+            kamas = float(success_data['prix (kamas)'].replace('m', '.')) * reduc * 1000000
         elif 'k' in success_data['prix (kamas)']:
             kamas = float(success_data['prix (kamas)'].replace('k', '.')) * reduc * 1000
         kamas = f"{int(kamas):,}".replace(",", " ")
@@ -76,6 +78,24 @@ class CreateThreadButton(ui.Button):
             # Information utilisateur
             user = interaction.user
             member = interaction.guild.get_member(user.id)
+            dataManager = await DataManager.get_instance()
+            client_data = await dataManager.get_member_data(user.id)
+            reduc = 1
+            if client_data[2] == "Jeune Retraité":
+                reduc = CONFIG["REDUCS"]["NOUVEAU"]
+            elif client_data[2] == "Retraité":
+                reduc = CONFIG["REDUCS"]["NORMAL"]
+            elif client_data[2] == "Retraité Premium" or client_data[2] == "Aides Soignants" or client_data[2] == "Médecin de Garde" or client_data[2] == "vieux des vieux":
+                reduc = CONFIG["REDUCS"]["PREMIUM"] 
+            if success_data['prix (kamas)'] == 'free':
+                kamasPrice = "Gratuit !"
+            else:
+                if 'm' in success_data['prix (kamas)']:
+                    kamas = float(success_data['prix (kamas)'].replace('m', '.')) * reduc * 1000000
+                elif 'k' in success_data['prix (kamas)']:
+                    kamas = float(success_data['prix (kamas)'].replace('k', '.')) * reduc * 1000
+                kamas = f"{int(kamas):,}".replace(",", " ")
+                kamasPrice = f"{kamas} Kamas {CONFIG['EMOTES']['KAMAS']}"
             pseudo = member.nick if member and member.nick else user.name
             
             # Titre du post formaté
@@ -88,11 +108,11 @@ class CreateThreadButton(ui.Button):
                 f"**Boss:** {self.boss_name}\n"
                 f"**Succès:** {self.success_name}\n\n"
                 f"## Prix\n"
-                f"**Prix standard:** {success_data['prix (kamas)']} Kamas\n" # A changer dans le futur pour les ch'tons
+                f"**Prix standard:** {kamasPrice}\n" # A changer dans le futur pour les ch'tons
             )
             
             if success_data['prix (coins)']:
-                content += f"**Alternative:** {success_data['prix (coins)']} Ch'tons\n\n"
+                content += f"**Alternative:** {int(int(success_data['prix (coins)']) * reduc)} Ch'tons {CONFIG['EMOTES']['CHTON']}\n\n"
             else:
                 content += "\n"
                 
@@ -101,8 +121,7 @@ class CreateThreadButton(ui.Button):
             # Ajout des mentions de passeurs
             passeurs_list = success_data['passeurs'].split(", ")
             for passeur in passeurs_list:
-                if passeur in CONFIG["PLAYERS"]:
-                    content += f"<@{CONFIG['PLAYERS'][passeur]}> "
+                content += f"{discord.utils.get(interaction.guild.members, display_name=passeur).mention} "
             
             content += "\n\n*Merci de préciser vos disponibilités ci-dessous.*"
             

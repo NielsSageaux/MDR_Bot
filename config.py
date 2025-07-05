@@ -5,7 +5,8 @@ Configuration centralisée pour le bot Discord
 CONFIG = {
     "CHANNELS": {
         "BIENVENUE": 1200333038664568893,
-        "FORUM_PASSAGES": 1353744187752976486
+        "FORUM_PASSAGES": 1353744187752976486,
+        "TRANSCRIPT": 1357340102975815700
     },
     "PLAYERS": {
         "Auto": 199975684607705088,
@@ -13,7 +14,8 @@ CONFIG = {
         "Jean-Lard": 336572559518859265,
         "Krakoukas": 267423385967919104,
         "Meilleur": 291706707602833408,
-        "Guiffee": 279349998901133314
+        "Guiffee": 279349998901133314,
+        "Diakisai": 410533122917269514
     },
     "API": {
         "PASSAGES_SHEET_ID": "151apOpgLtJyVPzg60Ecu8BZgV1UKE5bKtNdtTxkKhX0",
