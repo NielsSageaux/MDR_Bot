@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands, ui
-from discord.ext import commands, tasks
+from discord.ext import commands
 import asyncio
 from config import CONFIG
 from utils.logger import setup_logger
@@ -8,194 +8,170 @@ from services.data_manager import DataManager
 
 logger = setup_logger('passage_commands')
 
-async def create_success_embed(boss_name, success_name, client_id):
-    passages_data = DataManager.get_passages_data()
-    #if passages_data[boss_name]['ICONE'] != 'placeholder':
-    #    boss_name = passages_data[boss_name]['ICONE'] + " " + boss_name
+class PassageView(discord.ui.View):
+    """Vue unifiée pour gérer les passages"""
     
-    success_data = passages_data[boss_name]['SUCCESS'][success_name]
+    def __init__(self, boss_name, current_success, user_id):
+        super().__init__(timeout=300)
+        self.boss_name = boss_name
+        self.current_success = current_success
+        self.user_id = user_id
+        
+        # Ajouter les composants
+        self._add_components()
     
-    embed = discord.Embed(
-        title=f"**__{boss_name} - {success_name}__**",
-        color=CONFIG["COLORS"]["SUCCESS"]
-    )
-    
-    dataManager = await DataManager.get_instance()
-    client_data = await dataManager.get_member_data(client_id)
-    reduc = 1
-    if client_data[2] == "Jeune Retraité":
-        reduc = CONFIG["REDUCS"]["NOUVEAU"]
-    elif client_data[2] == "Retraité":
-        reduc = CONFIG["REDUCS"]["NORMAL"]
-    elif client_data[2] == "Retraité Premium" or client_data[2] == "Aides Soignants" or client_data[2] == "Médecin de Garde" or client_data[2] == "vieux des vieux":
-        reduc = CONFIG["REDUCS"]["PREMIUM"] 
-
-    if success_data['prix (kamas)'] == 'flemme':
-        embed.add_field(name="Désolé !", value="Ce succès n'est pas effectué par nos passeurs.", inline=False)
-    elif success_data['prix (kamas)'] == 'free':
-        embed.add_field(name="**Prix du passage :**", value="**Gratuit !**", inline=True)
-    else:
-        if 'm' in success_data['prix (kamas)']:
-            kamas = float(success_data['prix (kamas)'].replace('m', '.')) * reduc * 1000000
-        elif 'k' in success_data['prix (kamas)']:
-            kamas = float(success_data['prix (kamas)'].replace('k', '.')) * reduc * 1000
-        kamas = f"{int(kamas):,}".replace(",", " ")
-        embed.add_field(name="**Prix du passage :**", value=f"**{int(int(success_data['prix (coins)']) * reduc)} Ch'tons {CONFIG['EMOTES']['CHTON']}**", inline=True)
-        embed.add_field(name="**Prix alternatif :**", value=f"**{kamas} Kamas {CONFIG['EMOTES']['KAMAS']}**", inline=True)
-
-    embed.set_footer(text=
-                     "Utilisez le menu déroulant pour voir les autres succès du boss ou le bouton pour créer une demande de passage sur ce succès. Reformulez une commande /passage pour voir les succès proposés pour d'autres boss.")
-
-    view = discord.ui.View()
-    view.add_item(SuccessSelect(boss_name))
-    view.add_item(CreateThreadButton(boss_name, success_name))
-
-    return embed
-
-class CreateThreadButton(ui.Button):
-    """Bouton pour créer un thread"""
-    def __init__(self, boss_name, success_name):
-        super().__init__(
+    def _add_components(self):
+        """Ajoute les composants à la vue"""
+        # Menu déroulant des succès
+        boss_data = DataManager.get_passages_data()[self.boss_name]['SUCCESS']
+        success_list = list(boss_data.keys())
+        
+        options = [
+            discord.SelectOption(
+                label=success[:100],
+                description="Sélectionner ce succès",
+                emoji="🏆",
+                value=str(i)
+            )
+            for i, success in enumerate(success_list)
+        ]
+        
+        select = ui.Select(
+            placeholder="Sélectionnez un succès...",
+            options=options
+        )
+        select.callback = self._success_callback
+        
+        # Bouton de création de thread
+        button = ui.Button(
             style=discord.ButtonStyle.primary,
             label="Créer une demande de passage",
             emoji="📝"
         )
-        self.boss_name = boss_name
-        self.success_name = success_name
-
-    async def callback(self, interaction: discord.Interaction):
+        button.callback = self._thread_callback
+        
+        self.add_item(select)
+        self.add_item(button)
+    
+    async def _success_callback(self, interaction: discord.Interaction):
+        """Callback pour le menu déroulant"""
         try:
-            # Récupérer le channel du forum
+            selected_index = int(interaction.data['values'][0])
+            success_list = list(DataManager.get_passages_data()[self.boss_name]['SUCCESS'].keys())
+            self.current_success = success_list[selected_index]
+            
+            embed = await self._create_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
+            
+        except Exception as e:
+            logger.error(f"Erreur callback succès: {e}")
+            await interaction.response.send_message("Erreur lors de la sélection.", ephemeral=True)
+    
+    async def _thread_callback(self, interaction: discord.Interaction):
+        """Callback pour le bouton de création de thread"""
+        try:
             forum_channel = interaction.client.get_channel(CONFIG["CHANNELS"]["FORUM_PASSAGES"])
             if not forum_channel or not isinstance(forum_channel, discord.ForumChannel):
-                await interaction.response.send_message("Le forum n'a pas été trouvé. Contactez un administrateur.", ephemeral=True)
+                await interaction.response.send_message("Forum non trouvé.", ephemeral=True)
                 return
-                
-            # Récupérer les données du boss et du succès
+            
+            # Récupérer les données
             passages_data = DataManager.get_passages_data()
-            success_data = passages_data[self.boss_name]['SUCCESS'][self.success_name]
+            success_data = passages_data[self.boss_name]['SUCCESS'][self.current_success]
             
-            # Information utilisateur
-            user = interaction.user
-            member = interaction.guild.get_member(user.id)
+            # Calculer le prix
             dataManager = await DataManager.get_instance()
-            client_data = await dataManager.get_member_data(user.id)
-            reduc = 1
-            if client_data[2] == "Jeune Retraité":
-                reduc = CONFIG["REDUCS"]["NOUVEAU"]
-            elif client_data[2] == "Retraité":
-                reduc = CONFIG["REDUCS"]["NORMAL"]
-            elif client_data[2] == "Retraité Premium" or client_data[2] == "Aides Soignants" or client_data[2] == "Médecin de Garde" or client_data[2] == "vieux des vieux":
-                reduc = CONFIG["REDUCS"]["PREMIUM"] 
+            client_data = await dataManager.get_member_data(interaction.user.id)
+            reduc = self._get_reduction(client_data[2])
+            
+            if success_data['prix (kamas)'] == 'flemme':
+                await interaction.response.send_message("Ce succès n'est pas effectué par nos passeurs.", ephemeral=True)
+                return
+            
+            # Créer le thread
+            thread_title = f"{self.boss_name} - {self.current_success} pour {interaction.user.display_name}"
+            
+            content = f"**Boss :** {self.boss_name}\n**Succès :** {self.current_success}\n**Demandeur :** {interaction.user.mention}\n\n"
+            
             if success_data['prix (kamas)'] == 'free':
-                kamasPrice = "Gratuit !"
+                content += "**Prix :** Gratuit !"
             else:
-                if 'm' in success_data['prix (kamas)']:
-                    kamas = float(success_data['prix (kamas)'].replace('m', '.')) * reduc * 1000000
-                elif 'k' in success_data['prix (kamas)']:
-                    kamas = float(success_data['prix (kamas)'].replace('k', '.')) * reduc * 1000
-                kamas = f"{int(kamas):,}".replace(",", " ")
-                kamasPrice = f"{kamas} Kamas {CONFIG['EMOTES']['KAMAS']}"
-            pseudo = member.nick if member and member.nick else user.name
-            
-            # Titre du post formaté
-            post_title = f"[Demande] {self.boss_name} - {self.success_name} ({pseudo})"
-            
-            # Contenu formaté riche
-            content = (
-                f"# Demande de passage\n\n"
-                f"**Demandeur:** {interaction.user.mention}\n"
-                f"**Boss:** {self.boss_name}\n"
-                f"**Succès:** {self.success_name}\n\n"
-                f"## Prix\n"
-                f"**Prix standard:** {kamasPrice}\n" # A changer dans le futur pour les ch'tons
-            )
-            
-            if success_data['prix (coins)']:
-                content += f"**Alternative:** {int(int(success_data['prix (coins)']) * reduc)} Ch'tons {CONFIG['EMOTES']['CHTON']}\n\n"
-            else:
-                content += "\n"
+                kamas_str = success_data['prix (kamas)']
+                if 'm' in kamas_str:
+                    kamas = int(float(kamas_str.replace('m', '.')) * reduc * 1000000)
+                elif 'k' in kamas_str:
+                    kamas = int(float(kamas_str.replace('k', '.')) * reduc * 1000)
                 
-            content += "## Passeurs\n"
-            
-            # Ajout des mentions de passeurs
+                kamas_formatted = f"{kamas:,}".replace(",", " ")
+                coins = int(int(success_data['prix (coins)']) * reduc)
+                content += "**Prix :**\n"
+                content += f"Prix standard : **{kamas_formatted} Kamas {CONFIG['EMOTES']['KAMAS']}**\n"
+                content += f"Prix alternatif: **{coins} Ch'tons {CONFIG['EMOTES']['CHTON']}**\n\n"
+
+            content += "**Passeur(s) :**\n"
             passeurs_list = success_data['passeurs'].split(", ")
             for passeur in passeurs_list:
                 content += f"{discord.utils.get(interaction.guild.members, display_name=passeur).mention} "
-            
             content += "\n\n*Merci de préciser vos disponibilités ci-dessous.*"
             
-            # Création du thread avec tags si disponibles
-            thread_with_message = await forum_channel.create_thread(
-                name=post_title,
+            thread = await forum_channel.create_thread( 
+                name=thread_title[:100],
                 content=content
             )
             
-            thread = thread_with_message.thread
+            await interaction.response.send_message(f"✅ Demande créée avec succès ! Elle accessible ici : {thread.thread.jump_url}", ephemeral=True)
             
-            await interaction.response.send_message(
-                f"✅ Demande créée avec succès!\n"
-                f"[Cliquez ici pour accéder à votre demande](https://discord.com/channels/{interaction.guild.id}/{thread.id})",
-                ephemeral=True
-            )
-            
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "Je n'ai pas la permission de créer un post dans le forum.",
-                ephemeral=True
-            )
         except Exception as e:
-            logger.error(f"Erreur lors de la création du post: {e}", exc_info=True)
-            await interaction.response.send_message(
-                f"Une erreur s'est produite: {str(e)}",
-                ephemeral=True
-            )
-
-class SuccessSelect(ui.Select):
-    """Menu déroulant pour les succès d'un boss"""
-    boss_name = None
-
-    def __init__(self, boss_name):
-        self.boss_name = boss_name
-        boss_data_success = DataManager.get_passages_data()[boss_name]['SUCCESS']
-        
-        success_list = list(boss_data_success.keys())
-        
-        options = []
-        for success in success_list:
-            emoji = "🏆"  # Emoji par défaut
-            
-            # Limite la taille de la description
-            options.append(discord.SelectOption(
-                label=success[:100],  # Limite à 100 caractères
-                description="Sélectionner ce succès",
-                emoji=emoji,
-                value=str(success_list.index(success))
-            ))
-            
-        super().__init__(
-            placeholder="Sélectionnez un succès...",
-            min_values=1,
-            max_values=1,
-            options=options
-        )
+            logger.error(f"Erreur création thread: {e}")
+            await interaction.response.send_message("Erreur lors de la création du thread.", ephemeral=True)
     
-    async def callback(self, interaction: discord.Interaction):
-        try:
-            # Récupérer l'index du succès sélectionné
-            selected_index = int(self.values[0])
-            boss_data_success = DataManager.get_passages_data()[self.boss_name]['SUCCESS']
+    async def _create_embed(self):
+        """Crée l'embed pour le succès actuel"""
+        passages_data = DataManager.get_passages_data()
+        success_data = passages_data[self.boss_name]['SUCCESS'][self.current_success]
         
-            success_list = list(boss_data_success.keys())
+        embed = discord.Embed(
+            title=f"**__{self.boss_name} - {self.current_success}__**",
+            color=CONFIG["COLORS"]["SUCCESS"]
+        )
+        
+        # Calculer les prix
+        dataManager = await DataManager.get_instance()
+        client_data = await dataManager.get_member_data(self.user_id)
+        reduc = self._get_reduction(client_data[2])
+        
+        if success_data['prix (kamas)'] == 'flemme':
+            embed.add_field(name="Désolé !", value="Ce succès n'est pas effectué par nos passeurs.", inline=False)
+        elif success_data['prix (kamas)'] == 'free':
+            embed.add_field(name="**Prix du passage :**", value="**Gratuit !**", inline=True)
+        else:
+            # Calculer les kamas
+            kamas_str = success_data['prix (kamas)']
+            if 'm' in kamas_str:
+                kamas = int(float(kamas_str.replace('m', '.')) * reduc * 1000000)
+            elif 'k' in kamas_str:
+                kamas = int(float(kamas_str.replace('k', '.')) * reduc * 1000)
             
-            selected_success = success_list[selected_index]
-            embed = await create_success_embed(self.boss_name, selected_success, interaction.user.id) 
+            kamas_formatted = f"{kamas:,}".replace(",", " ")
+            coins = int(int(success_data['prix (coins)']) * reduc)
             
-            await interaction.response.edit_message(embed=embed, view=self.view)
+            embed.add_field(name="**Prix du passage :**", value=f"**{coins} Ch'tons {CONFIG['EMOTES']['CHTON']}**", inline=True)
+            embed.add_field(name="**Prix alternatif :**", value=f"**{kamas_formatted} Kamas {CONFIG['EMOTES']['KAMAS']}**", inline=True)
 
-        except Exception as e:
-            logger.error(f"Erreur dans le callback du menu succès: {e}", exc_info=True)
-            await interaction.response.send_message("Une erreur est survenue lors de la sélection du succès.", ephemeral=True)
+        embed.set_footer(text="Utilisez le menu pour changer de succès ou le bouton pour créer une demande. Reformulez une commande /passage pour voir les succès proposés pour d'autres boss.")
+        
+        return embed
+    
+    def _get_reduction(self, role):
+        """Calcule la réduction selon le rôle"""
+        if role == "Jeune Retraité":
+            return CONFIG["REDUCS"]["NOUVEAU"]
+        elif role == "Retraité":
+            return CONFIG["REDUCS"]["NORMAL"]
+        elif role in ["Retraité Premium", "Aides Soignants", "Médecin de Garde", "vieux des vieux"]:
+            return CONFIG["REDUCS"]["PREMIUM"]
+        return 1
+
 
 class PassageCommands(commands.Cog):
     """Commandes pour les passages de boss"""
@@ -204,70 +180,58 @@ class PassageCommands(commands.Cog):
         self.bot = bot
         self.data_ready = asyncio.Event()
         self.boss_list = []
-        self.passages_data = {}
-        self.bot.loop.create_task(self.wait_for_data())
+        
+        # Charger les données
+        self.bot.loop.create_task(self._load_data())
     
-    async def wait_for_data(self):
-        """Attend que les données soient disponibles"""
+    async def _load_data(self):
+        """Charge les données des boss"""
         await self.bot.wait_until_ready()
         
-        # Attendre que les données soient prêtes
         while True:
             try:
                 data = DataManager.get_passages_data()
                 if data:
-                    self.data_ready.set()
                     self.boss_list = DataManager.get_boss_list()
-                    self.passages_data = DataManager.get_passages_data()
-                    logger.info(f"Données de passage prêtes: {len(data)} boss trouvés")
+                    self.data_ready.set()
+                    logger.info(f"Données chargées: {len(data)} boss")
                     break
             except:
                 pass
-                
-            await asyncio.sleep(1)  # Vérifier chaque seconde
+            await asyncio.sleep(1)
 
     async def boss_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-        """Fonction qui suggère des boss en fonction de ce que l'utilisateur tape"""
-        choices = []
-        
+        """Autocomplétion pour les boss"""
         matching_bosses = [boss for boss in self.boss_list if current.lower() in boss.lower()]
-        
-        for boss in matching_bosses[:5]:  # Limite à 5 choix
-            choices.append(app_commands.Choice(name=boss, value=boss))
-        
-        return choices
+        return [app_commands.Choice(name=boss, value=boss) for boss in matching_bosses[:5]]
     
     @app_commands.command(name="passage", description="Affiche les informations sur un passage de boss")
     @app_commands.describe(boss="Nom du boss")
     @app_commands.autocomplete(boss=boss_autocomplete)
     async def passage_command(self, interaction: discord.Interaction, boss: str):
-        """Commande pour afficher les informations sur un passage de boss"""
+        """Commande principale pour les passages"""
         await interaction.response.defer(ephemeral=True)
         
         try:
-            # Vérifier si on attend encore les données
-            if boss == "loading" or not self.data_ready.is_set():
-                return await interaction.followup.send("Les données sont encore en cours de chargement. Veuillez réessayer.", ephemeral=True)
+            if not self.data_ready.is_set():
+                return await interaction.followup.send("Données en cours de chargement...", ephemeral=True)
             
-            # Récupérer les données du boss
             passages_data = DataManager.get_passages_data()
             if boss not in passages_data or 'SUCCESS' not in passages_data[boss]:
-                return await interaction.followup.send(f"Boss **{boss}** non trouvé ou sans succès.", ephemeral=True)
+                return await interaction.followup.send(f"Boss **{boss}** non trouvé.", ephemeral=True)
             
             # Premier succès par défaut
             first_success = next(iter(passages_data[boss]['SUCCESS'].keys()))
             
-            # Créer l'embed et la vue
-            embed = await create_success_embed(boss, first_success, interaction.user.id)
-            view = discord.ui.View()
-            view.add_item(SuccessSelect(boss))
-            view.add_item(CreateThreadButton(boss, first_success))
+            # Créer la vue et l'embed
+            view = PassageView(boss, first_success, interaction.user.id)
+            embed = await view._create_embed()
             
             await interaction.followup.send(embed=embed, view=view, ephemeral=True)
             
         except Exception as e:
-            logger.error(f"Erreur lors de l'exécution de la commande passage: {e}", exc_info=True)
-            await interaction.followup.send("Une erreur s'est produite lors de l'exécution de la commande.", ephemeral=True)
+            logger.error(f"Erreur commande passage: {e}")
+            await interaction.followup.send("Une erreur s'est produite.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(PassageCommands(bot))
