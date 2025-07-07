@@ -53,6 +53,14 @@ class DataManager:
         if self._load_data_task is None:
             self._load_data_task = self.load_data
             self._load_data_task.start()
+
+    @staticmethod
+    def get_passages_data():
+        return DataManager._passages_data
+
+    @staticmethod
+    def get_boss_list():
+        return DataManager._boss_list
     
     async def load_data_once(self):
         """Version sans décorateur pour l'initialisation"""

@@ -94,7 +94,7 @@ class PassageView(discord.ui.View):
             content = f"**Boss :** {self.boss_name}\n**Succès :** {self.current_success}\n**Demandeur :** {interaction.user.mention}\n\n"
             
             if success_data['prix (kamas)'] == 'free':
-                content += "**Prix :** Gratuit !"
+                content += "**Prix :** Gratuit !\n\n"
             else:
                 kamas_str = success_data['prix (kamas)']
                 if 'm' in kamas_str:
