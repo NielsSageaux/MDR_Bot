@@ -1,5 +1,5 @@
 import json
-import asyncio
+from discord.ext import tasks
 import time
 from utils.logger import setup_logger
 from services.google_sheets import GoogleSheetsService
@@ -37,6 +37,9 @@ class DataManager:
     _cache = DataCache()
     _boss_list = []
     
+    def __init__(self):
+        self._load_data_task = None
+    
     @classmethod
     async def get_instance(cls):
         if cls._instance is None:
@@ -45,18 +48,14 @@ class DataManager:
         return cls._instance
     
     async def initialize(self):
-        await self.load_data()
+        await self.load_data_once()
+        # Démarrer la tâche périodique
+        if self._load_data_task is None:
+            self._load_data_task = self.load_data
+            self._load_data_task.start()
     
-    @staticmethod
-    def get_passages_data():
-        return DataManager._passages_data
-
-    @staticmethod
-    def get_boss_list():
-        return DataManager._boss_list
-    
-    async def load_data(self):
-        """Charge les données depuis Google Sheets"""
+    async def load_data_once(self):
+        """Version sans décorateur pour l'initialisation"""
         cached_data = DataManager._cache.get('passages_data')
         if cached_data:
             DataManager._passages_data = cached_data
@@ -64,8 +63,8 @@ class DataManager:
         
         try:
             spreadsheet_id = CONFIG["API"]["PASSAGES_SHEET_ID"]
-            sheet_name = "Sheet1"  # Ajustez selon votre nom de feuille
-            range_name = f"{sheet_name}!A:F" # Ajustez selon votre plage de données
+            sheet_name = "Sheet1"
+            range_name = f"{sheet_name}!A:F"
             
             data = await GoogleSheetsService.read_all_rows(
                 spreadsheet_id,
@@ -74,8 +73,10 @@ class DataManager:
             
             if data:
                 processed_data = {}
+                DataManager._boss_list = []  # Reset la liste
+                
                 for row in data[1:]:
-                    if len(row) > 5: # Au remplissage d'un nouveau succès, les colonnes succes, prix et passeurs doivent etre remplies
+                    if len(row) > 5:
                         if processed_data.get(row[0]) is None:
                             processed_data[row[0]] = {"ICONE": row[1], "SUCCESS": {}}
                             DataManager._boss_list.append(row[0])
@@ -96,6 +97,16 @@ class DataManager:
             logger.error(f"Erreur lors du chargement des données: {e}", exc_info=True)
             return False
     
+    @tasks.loop(hours=1)
+    async def load_data(self):
+        """Charge les données depuis Google Sheets de manière périodique"""
+        return await self.load_data_once()
+    
+    @load_data.error
+    async def load_data_error(self, error):
+        """Gère les erreurs de la tâche pour éviter qu'elle s'arrête"""
+        logger.error(f"Erreur dans la tâche load_data: {error}", exc_info=True)
+
     async def save_member_data(self, member_id, data):
         """Sauvegarde les données d'un membre"""
         try:
