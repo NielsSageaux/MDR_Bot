@@ -202,8 +202,17 @@ class PassageCommands(commands.Cog):
 
     async def boss_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         """Autocomplétion pour les boss"""
-        matching_bosses = [boss for boss in self.boss_list if current.lower() in boss.lower()]
-        return [app_commands.Choice(name=boss, value=boss) for boss in matching_bosses[:5]]
+        try:
+            # Récupérer les données fraîches à chaque fois
+            boss_list = DataManager.get_boss_list()
+            if not boss_list:
+                return []
+            
+            matching_bosses = [boss for boss in boss_list if current.lower() in boss.lower()]
+            return [app_commands.Choice(name=boss, value=boss) for boss in matching_bosses[:10]]
+        except Exception as e:
+            logger.error(f"Erreur autocomplétion: {e}")
+            return []
     
     @app_commands.command(name="passage", description="Affiche les informations sur un passage de boss")
     @app_commands.describe(boss="Nom du boss")
