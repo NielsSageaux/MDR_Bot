@@ -3,6 +3,7 @@
 venv/
 env/
 .venv/
+myenv/
 .env.local
 
 # Logs
